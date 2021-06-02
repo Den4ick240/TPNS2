@@ -3,6 +3,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from Layer import Layer
 from TestLayer import TestLayer
+from threading import Thread
+from datetime import datetime
+import winsound
 
 
 def test(network, test_input_data, test_output_data, last_layer, print_info=True):
@@ -21,13 +24,13 @@ def test(network, test_input_data, test_output_data, last_layer, print_info=True
 
     if print_info:
         x = np.arange(len(test_input_data))
+        # fig, ax = plt.subplots()
+        # ax.plot(x, output_G_total, label='result', marker='o')
+        # ax.plot(x, expected_G_total, label='expected', marker='o')
+        # plt.show()
         fig, ax = plt.subplots()
-        ax.plot(x, output_G_total, label='result', marker='o')
-        ax.plot(x, expected_G_total, label='expected', marker='o')
-        plt.show()
-        fig, ax = plt.subplots()
-        ax.plot(x, output_kgf, label='result', marker='o')
-        ax.plot(x, expected_kgf, label='expected', marker='o')
+        ax.plot(x, output_kgf, label='result')
+        ax.plot(x, expected_kgf, label='expected')
         ax.legend()
         plt.show()
 
@@ -49,17 +52,17 @@ def draw_mse(mse_list, test_mse_list):
 
 
 def train(input_data, output_data, test_input_data,
-          test_output_data, epoch_num=1000, learning_rate=0.01,
+          test_output_data, epoch_num=5000, learning_rate=0.044,
           stochastic=False):
     batch_size = len(input_data)
     last_layer = TestLayer(output_data)
-    last_hidden_layer = Layer(input_size=90, next_layer=last_layer, activation=False)
+    last_hidden_layer = Layer(input_size=63, next_layer=last_layer, activation=False)
     network = Layer(input_size=len(input_data[0]),
-                    next_layer=Layer(input_size=60,
+                    next_layer=Layer(input_size=70,
                                      next_layer=last_hidden_layer))
     mse_list = []
     test_mse_list = []
-    for epoch in range(epoch_num):
+    for epoch in range(epoch_num + 1):
         order = np.random.permutation(batch_size)
         last_layer.mse = np.zeros_like(output_data[0])
         for current_data_row in order:
@@ -70,17 +73,23 @@ def train(input_data, output_data, test_input_data,
                 network.update_weights(learning_rate / batch_size)
         if not stochastic:
             network.update_weights(learning_rate / batch_size)
-        if epoch % 10 == 0:
+        if epoch % 100 == 0 and False:
             mse = last_layer.mse / batch_size
             last_layer.mse = np.zeros_like(output_data[0])
-            test(network, test_input_data, test_output_data, last_layer, print_info=False)
+            test(network, test_input_data, test_output_data, last_layer,
+                 # print_info=(epoch % 200 == 0)
+                 False
+                 )
             test_mse = last_layer.mse / len(test_input_data)
             print('epoch', epoch, 'training mse: ', mse, 'test mse: ', test_mse)
             if epoch > 10:
                 mse_list.append(mse)
                 test_mse_list.append(test_mse)
+    last_layer.mse = np.zeros_like(output_data[0])
     test(network, test_input_data, test_output_data, last_layer)
-    draw_mse(mse_list, test_mse_list)
+    print(last_layer.mse / len(test_input_data))
+    # test(network, input_data, output_data, last_layer)
+    # draw_mse(mse_list, test_mse_list)
 
 
 def normalize(data):
@@ -100,12 +109,45 @@ def separate_data(data):
     return test_dataset, train_dataset
 
 
+class MyThread(Thread):
+    def __init__(self, train_input, train_output, test_input, test_output):
+        Thread.__init__(self)
+        self.train_input = train_input
+        self.train_output = train_output
+        self.test_input = test_input
+        self.test_output = test_output
+
+    def run(self) -> None:
+        train(self.train_input, self.train_output, self.test_input, self.test_output)
+
+
 def main():
     data = pd.read_csv('data/data.csv', sep=';', encoding='windows-1251').to_numpy()
     normalize(data)
     test_data, train_data = separate_data(data)
-    train(train_data[:, :-2], train_data[:, -2:], test_data[:, :-2], test_data[:, -2:])
+    train_input = train_data[:, :-2]
+    train_output = train_data[:, -2:]
+    test_input = test_data[:, :-2]
+    test_output = test_data[:, -2:]
+    # MyThread(train_input, train_output, test_input, test_output).start()
+    # MyThread(train_input, train_output, test_input, test_output).start()
+    # MyThread(train_input, train_output, test_input, test_output).start()
+    print('start', )
+
+    def print_time():
+        now = datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        print(current_time)
+
+    print_time()
+    for j in range(2):
+        train(train_input, train_output, test_input, test_output)
+        print_time()
 
 
 if __name__ == '__main__':
-    main()
+    for i in range(8):
+        main()
+    frequency = 2500  # Set Frequency To 2500 Hertz
+    duration = 1000  # Set Duration To 1000 ms == 1 second
+    winsound.Beep(frequency, duration)
